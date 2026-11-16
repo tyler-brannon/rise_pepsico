@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rise v. PepsiCo Projector</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { overflow: hidden; }
+  .screen { height: 100vh; display: grid; grid-template-columns: 1fr minmax(300px, 26vw); gap: 2vw; padding: 2.2vw 2.4vw; }
+  .main { display: flex; flex-direction: column; min-height: 0; }
+  .side-col { display: flex; flex-direction: column; gap: 1.5vw; min-height: 0; }
+  .s-live { font-size: 1.1vw; }
+  .s-live .dot { width: .7vw; height: .7vw; }
+  .s-title { font-size: 2.8vw; line-height: 1.1; margin: .6vw 0 .2vw; letter-spacing: -.02em; }
+  .s-case { font-size: 1.3vw; color: var(--muted); font-style: italic; margin: 0; }
+  .s-odds { display: grid; grid-template-columns: 1fr 1fr; margin-top: 1.5vw; background: var(--card); border: 1px solid var(--line); border-radius: 1.2vw; overflow: hidden; }
+  .s-odds .odds-side { padding: 1.2vw 1.6vw 1vw; }
+  .s-odds .odds-name { font-size: 1.6vw; }
+  .s-odds .odds-sub { font-size: 1vw; }
+  .s-odds .odds-pct { font-size: 6vw; margin-top: .2vw; }
+  .s-odds .bar { height: .8vw; }
+  .s-chart { flex: 1; min-height: 0; margin-top: 1.5vw; background: var(--card); border: 1px solid var(--line); border-radius: 1.2vw; padding: 1vw 1vw 1vw 1.4vw; display: flex; flex-direction: column; }
+  .s-chart .chart-legend { font-size: 1vw; }
+  .s-chart canvas { flex: 1; width: 100%; min-height: 0; display: block; }
+  .join-card { background: var(--card); border: 1px solid var(--line); border-radius: 1.2vw; padding: 1.4vw; text-align: center; }
+  .join-card img { width: 100%; max-width: 15vw; aspect-ratio: 1; background: #fff; border-radius: .6vw; padding: .4vw; }
+  .join-card .lbl { font-size: 1vw; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 650; }
+  .join-card .url { font-size: 1.3vw; font-weight: 750; margin-top: .4vw; word-break: break-all; }
+  .s-panel { flex: 1; min-height: 0; overflow: hidden; background: var(--card); border: 1px solid var(--line); border-radius: 1.2vw; padding: 1.2vw 1.4vw; }
+  .s-panel h2 { font-size: .95vw; margin-bottom: .6vw; }
+  .s-panel .list li { font-size: 1.15vw; padding: .65vw 0; gap: .8vw; }
+  .s-panel .tag { font-size: .75vw; }
+  .s-panel .feed-time { font-size: .85vw; }
+  .s-panel .rank { width: 2vw; }
+  .s-panel .val small { font-size: .85vw; }
+  .closed-pill { display: inline-block; margin-left: 1vw; padding: .3vw .9vw; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 1vw; vertical-align: middle; }
+  @media (max-aspect-ratio: 1/1) {
+    body { overflow: auto; }
+    .screen { height: auto; grid-template-columns: 1fr; }
+    .s-chart canvas { height: 240px; }
+  }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="main">
+    <div class="live s-live" id="live"><span class="dot"></span><span id="liveText">Live</span> · <span id="traders">0</span> traders · <span id="volume">$0</span> traded</div>
+    <h1 class="s-title">Who has the better trademark argument?<span class="closed-pill" id="closedPill" hidden>Trading closed</span></h1>
+    <p class="s-case">RiseandShine Corp. v. PepsiCo, Inc.</p>
+    <div class="s-odds">
+      <div class="odds-side rise"><div class="odds-name">RiseandShine</div><div class="odds-sub">RISE Brewing Co.</div><div class="odds-pct" id="pctRise">50%</div></div>
+      <div class="odds-side pepsi"><div class="odds-name">PepsiCo</div><div class="odds-sub">Mtn Dew Rise Energy</div><div class="odds-pct" id="pctPepsi">50%</div></div>
+      <div class="bar"><span id="barRise" style="width:50%"></span></div>
+    </div>
+    <div class="s-chart">
+      <div class="chart-legend"><span><i style="background:var(--rise)"></i>RiseandShine</span><span><i style="background:var(--pepsi)"></i>PepsiCo</span></div>
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+  <div class="side-col">
+    <div class="join-card">
+      <div class="lbl">Scan to trade</div>
+      <img src="/qr.svg" alt="QR code to join the market">
+      <div class="url" id="url"></div>
+    </div>
+    <div class="s-panel">
+      <h2 id="panelTitle">Live trades</h2>
+      <ul class="list" id="panel"></ul>
+    </div>
+  </div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  $('url').textContent = location.host;
+  const S = { history: [], feed: [], board: [], price: 0.5, open: true, startCash: 1000 };
+  const socket = io();
+  socket.on('state', (st) => { Object.assign(S, { history: st.history.slice(), feed: st.feed.slice(), price: st.price, open: st.open, startCash: st.startCash }); header(st); render(); });
+  socket.on('tick', (t) => {
+    S.price = t.price; S.open = t.open; S.history.push(t.point);
+    if (t.feed && t.feed.length) S.feed = t.feed.slice().reverse().concat(S.feed).slice(0, 40);
+    header(t); render();
+  });
+  socket.on('board', (b) => { S.board = b; renderPanel(); });
+  socket.on('reset', () => { S.feed = []; S.board = []; });
+
+  function header(x) { $('traders').textContent = x.traders; $('volume').textContent = Mkt.moneyShort(x.volume || 0); }
+  function render() {
+    $('pctRise').textContent = Mkt.pct(S.price);
+    $('pctPepsi').textContent = Mkt.pct(1 - S.price);
+    $('barRise').style.width = (S.price * 100).toFixed(1) + '%';
+    $('live').classList.toggle('closed', !S.open);
+    $('liveText').textContent = S.open ? 'Live' : 'Closed';
+    $('closedPill').hidden = S.open;
+    renderPanel();
+    draw();
+  }
+  // While open: live trades. Once closed: final standings.
+  function renderPanel() {
+    const ul = $('panel');
+    ul.innerHTML = '';
+    $('panelTitle').textContent = S.open ? 'Live trades' : 'Final standings';
+    const empty = (txt) => { const li = document.createElement('li'); li.className = 'empty'; li.textContent = txt; ul.appendChild(li); };
+    if (S.open) {
+      if (!S.feed.length) return empty('Waiting for the first trade…');
+      S.feed.slice(0, 12).forEach((f) => {
+        const li = document.createElement('li');
+        const tag = document.createElement('span'); tag.className = 'tag ' + f.side;
+        tag.textContent = (f.action === 'buy' ? 'Buy ' : 'Sell ') + (f.side === 'rise' ? 'Rise' : 'Pepsi');
+        const main = document.createElement('div'); main.className = 'feed-main';
+        const b = document.createElement('b'); b.textContent = f.name;
+        main.append(b, document.createTextNode(` ${f.action === 'buy' ? 'bought' : 'sold'} ${Mkt.money(f.dollars)}`));
+        const tm = document.createElement('div'); tm.className = 'feed-time'; tm.textContent = Mkt.timeAgo(f.t);
+        main.appendChild(tm);
+        li.append(tag, main); ul.appendChild(li);
+      });
+    } else {
+      if (!S.board.length) return empty('No traders.');
+      const medals = ['🥇', '🥈', '🥉'];
+      S.board.slice(0, 10).forEach((r, i) => {
+        const li = document.createElement('li');
+        const rank = document.createElement('span'); rank.className = 'rank' + (i < 3 ? ' medal' : ''); rank.textContent = i < 3 ? medals[i] : i + 1;
+        const who = document.createElement('span'); who.className = 'who'; who.textContent = r.name;
+        const val = document.createElement('span'); val.className = 'val'; val.textContent = Mkt.money(r.value);
+        const pnl = r.value - S.startCash;
+        const sm = document.createElement('small'); sm.className = pnl > 0.005 ? 'up' : pnl < -0.005 ? 'down' : '';
+        sm.textContent = (pnl >= 0 ? '+' : '−') + ((Math.abs(pnl) / S.startCash) * 100).toFixed(1) + '%';
+        val.appendChild(sm);
+        li.append(rank, who, val); ul.appendChild(li);
+      });
+    }
+  }
+  function draw() {
+    const fs = Math.max(12, Math.round(window.innerWidth / 90));
+    Mkt.drawChart($('chart'), S.history, { fontSize: fs, lineWidth: Math.max(2.5, fs / 4.5) });
+  }
+  window.addEventListener('resize', draw);
+  setInterval(() => { draw(); if (S.open) renderPanel(); }, 5000);
+})();
+</script>
+</body>
+</html>

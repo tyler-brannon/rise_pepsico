@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Market Presenter Controls</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .app { padding-bottom: 40px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .btn { padding: 14px; border-radius: 12px; font-weight: 700; background: var(--chip); }
+  .btn.dark { background: var(--text); color: var(--bg); }
+  .btn.danger { background: var(--down); color: #fff; }
+  .note { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .links a { color: var(--pepsi); font-weight: 600; }
+  .pw input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; margin-bottom: 10px; }
+  .rm { padding: 6px 10px; border-radius: 8px; background: var(--chip); font-size: 13px; font-weight: 600; color: var(--down); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="live" id="live"><span class="dot"></span><span id="liveText">Live</span></div>
+    <h1>Presenter controls</h1>
+    <p class="case">RiseandShine Corp. v. PepsiCo, Inc.</p>
+  </header>
+
+  <form class="card pw" id="login">
+    <h2>Admin password</h2>
+    <input type="password" id="pw" autocomplete="current-password" placeholder="Password">
+    <button class="btn dark" style="width:100%" type="submit">Unlock</button>
+    <p class="msg err" id="loginMsg"></p>
+  </form>
+
+  <div id="panel" hidden>
+    <div class="card">
+      <h2>Market</h2>
+      <div class="pos-grid">
+        <div class="stat big"><small>RiseandShine</small><b id="pRise" style="color:var(--rise)">50%</b></div>
+        <div class="stat big"><small>PepsiCo</small><b id="pPepsi" style="color:var(--pepsi)">50%</b></div>
+        <div class="stat"><small>Traders</small><b id="traders">0</b></div>
+        <div class="stat"><small>Volume</small><b id="volume">$0</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Trading</h2>
+      <button class="btn dark" style="width:100%" id="toggle">Close trading</button>
+      <p class="note">Closing freezes prices and locks in the final standings on every phone and on the projector. You can reopen it.</p>
+    </div>
+
+    <div class="card links">
+      <h2>Links</h2>
+      <p style="margin:0">Projector view: <a href="/screen" target="_blank">/screen</a> (shows a QR code to join)<br>Student view: <a href="/" target="_blank">/</a></p>
+    </div>
+
+    <div class="card">
+      <h2>Traders</h2>
+      <p class="note" style="margin:0 0 6px">Remove a trader with an inappropriate nickname. Their phone returns to the name screen.</p>
+      <ol class="list" id="board"></ol>
+    </div>
+
+    <div class="card">
+      <h2>Reset</h2>
+      <button class="btn danger" style="width:100%" id="reset">Reset market</button>
+      <p class="note" id="resetNote">Wipes every trader, trade and the price history. Use between class periods.</p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" style="bottom:20px"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let pw = sessionStorage.getItem('rp_admin') || '';
+  let open = true, board = [], resetArmed = null, armedId = null, armedTimer = null;
+  const socket = io();
+
+  function call(action, extra, cb) {
+    socket.timeout(8000).emit('admin', Object.assign({ password: pw, action }, extra || {}), (err, res) => {
+      if (err) return toast('Connection problem');
+      if (!res.ok) return toast(res.error);
+      open = res.open; renderOpen();
+      cb && cb(res);
+    });
+  }
+  function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2400); }
+
+  function unlock() {
+    call('login', null, () => {
+      try { sessionStorage.setItem('rp_admin', pw); } catch (e) {}
+      $('login').hidden = true; $('panel').hidden = false;
+    });
+  }
+  $('login').addEventListener('submit', (e) => {
+    e.preventDefault(); pw = $('pw').value;
+    socket.timeout(8000).emit('admin', { password: pw, action: 'login' }, (err, res) => {
+      if (err || !res.ok) { $('loginMsg').textContent = err ? 'Connection problem' : res.error; return; }
+      try { sessionStorage.setItem('rp_admin', pw); } catch (e) {}
+      open = res.open; renderOpen();
+      $('login').hidden = true; $('panel').hidden = false;
+    });
+  });
+  if (pw) socket.once('connect', unlock);
+
+  $('toggle').addEventListener('click', () => call(open ? 'close' : 'open', null, (r) => toast(r.open ? 'Trading reopened' : 'Trading closed')));
+  $('reset').addEventListener('click', () => {
+    if (!resetArmed) {
+      $('reset').textContent = 'Tap again to confirm reset';
+      resetArmed = setTimeout(() => { resetArmed = null; $('reset').textContent = 'Reset market'; }, 4000);
+      return;
+    }
+    clearTimeout(resetArmed); resetArmed = null; $('reset').textContent = 'Reset market';
+    call('reset', null, () => toast('Market reset'));
+  });
+
+  function renderOpen() {
+    $('toggle').textContent = open ? 'Close trading' : 'Reopen trading';
+    $('live').classList.toggle('closed', !open);
+    $('liveText').textContent = open ? 'Live' : 'Closed';
+  }
+  function setStats(x) {
+    $('pRise').textContent = Mkt.pct(x.price); $('pPepsi').textContent = Mkt.pct(1 - x.price);
+    $('traders').textContent = x.traders; $('volume').textContent = Mkt.moneyShort(x.volume || 0);
+    open = x.open; renderOpen();
+  }
+  socket.on('state', setStats);
+  socket.on('tick', setStats);
+  socket.on('board', (b) => {
+    board = b;
+    const ol = $('board'); ol.innerHTML = '';
+    if (!b.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No traders yet.'; ol.appendChild(li); return; }
+    b.forEach((r, i) => {
+      const li = document.createElement('li');
+      const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = i + 1;
+      const who = document.createElement('span'); who.className = 'who'; who.textContent = r.name;
+      const val = document.createElement('span'); val.className = 'val'; val.textContent = Mkt.money(r.value);
+      const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = armedId === r.id ? 'Confirm' : 'Remove';
+      rm.addEventListener('click', () => {
+        if (armedId === r.id) { armedId = null; call('remove', { id: r.id }, () => toast('Removed ' + r.name)); return; }
+        armedId = r.id; rm.textContent = 'Confirm';
+        clearTimeout(armedTimer);
+        armedTimer = setTimeout(() => { armedId = null; rm.textContent = 'Remove'; }, 4000);
+      });
+      li.append(rank, who, val, rm); ol.appendChild(li);
+    });
+  });
+})();
+</script>
+</body>
+</html>

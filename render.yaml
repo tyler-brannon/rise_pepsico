@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: rise-v-pepsico-market
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
