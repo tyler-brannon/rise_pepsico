@@ -36,6 +36,10 @@
   .s-panel .rank { width: 2vw; }
   .s-panel .val small { font-size: .85vw; }
   .closed-pill { display: inline-block; margin-left: 1vw; padding: .3vw .9vw; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 1vw; vertical-align: middle; }
+  .pip-btn { margin-left: auto; padding: .45vw 1vw; border-radius: 99px; background: var(--text); color: var(--bg);
+    font-size: max(12px, .95vw); font-weight: 650; letter-spacing: 0; text-transform: none; }
+  .pip-btn.on { background: var(--chip); color: var(--text); }
+  .pip-note { margin: .4vw 0 0; font-size: max(12px, .95vw); color: var(--muted); text-align: right; }
   @media (max-aspect-ratio: 1/1) {
     body { overflow: auto; }
     .screen { height: auto; grid-template-columns: 1fr; }
@@ -46,7 +50,9 @@
 <body>
 <div class="screen">
   <div class="main">
-    <div class="live s-live" id="live"><span class="dot"></span><span id="liveText">Live</span> · <span id="traders">0</span> traders · <span id="volume">$0</span> traded</div>
+    <div class="live s-live" id="live"><span class="dot"></span><span id="liveText">Live</span> · <span id="traders">0</span> traders · <span id="volume">$0</span> traded
+      <button class="pip-btn" id="pipBtn" type="button" title="Open a small always-on-top window you can place over Google Slides">Pop out mini view</button></div>
+    <p class="pip-note" id="pipNote" hidden></p>
     <h1 class="s-title">Who has the better trademark argument?<span class="closed-pill" id="closedPill" hidden>Trading closed</span></h1>
     <p class="s-case">RiseandShine Corp. v. PepsiCo, Inc.</p>
     <div class="s-odds">
@@ -73,11 +79,29 @@
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/common.js"></script>
+<script src="/pip.js"></script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
   $('url').textContent = location.host;
-  const S = { history: [], feed: [], board: [], price: 0.5, open: true, startCash: 1000 };
+  const S = { history: [], feed: [], board: [], price: 0.5, open: true, startCash: 1000, traders: 0 };
+
+  const pipBtn = $('pipBtn');
+  if (!MarketPip.supported) {
+    pipBtn.addEventListener('click', () => {
+      $('pipNote').hidden = false;
+      $('pipNote').textContent = 'The mini view needs desktop Chrome or Edge (version 116 or newer).';
+    });
+  } else {
+    pipBtn.addEventListener('click', () => {
+      MarketPip.open().catch((e) => { $('pipNote').hidden = false; $('pipNote').textContent = 'Could not open the mini view: ' + e.message; });
+    });
+    MarketPip.onChange((isOpen) => {
+      pipBtn.textContent = isOpen ? 'Close mini view' : 'Pop out mini view';
+      pipBtn.classList.toggle('on', isOpen);
+      if (isOpen) MarketPip.update(S);
+    });
+  }
   const socket = io();
   socket.on('state', (st) => { Object.assign(S, { history: st.history.slice(), feed: st.feed.slice(), price: st.price, open: st.open, startCash: st.startCash }); header(st); render(); });
   socket.on('tick', (t) => {
@@ -88,7 +112,7 @@
   socket.on('board', (b) => { S.board = b; renderPanel(); });
   socket.on('reset', () => { S.feed = []; S.board = []; });
 
-  function header(x) { $('traders').textContent = x.traders; $('volume').textContent = Mkt.moneyShort(x.volume || 0); }
+  function header(x) { S.traders = x.traders; $('traders').textContent = x.traders; $('volume').textContent = Mkt.moneyShort(x.volume || 0); }
   function render() {
     $('pctRise').textContent = Mkt.pct(S.price);
     $('pctPepsi').textContent = Mkt.pct(1 - S.price);
@@ -137,6 +161,7 @@
   function draw() {
     const fs = Math.max(12, Math.round(window.innerWidth / 90));
     Mkt.drawChart($('chart'), S.history, { fontSize: fs, lineWidth: Math.max(2.5, fs / 4.5) });
+    MarketPip.update(S);
   }
   window.addEventListener('resize', draw);
   setInterval(() => { draw(); if (S.open) renderPanel(); }, 5000);
