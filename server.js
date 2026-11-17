@@ -92,7 +92,7 @@ function publicState() {
     price: pRise(), volume: round2(state.volume),
     traders: Object.keys(state.users).length,
     history: state.history, feed: state.feed, epoch: state.epoch,
-    names: NAMES,
+    names: NAMES, now: Date.now(),
   };
 }
 function meView(u) {
@@ -131,7 +131,7 @@ setInterval(() => {
   io.emit('tick', {
     q: state.q, price: point.p, point, open: state.open,
     volume: round2(state.volume), traders: Object.keys(state.users).length,
-    feed: pendingFeed,
+    feed: pendingFeed, now: point.t,
   });
   pendingFeed = [];
   boardDirty = true;

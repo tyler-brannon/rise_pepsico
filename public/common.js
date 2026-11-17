@@ -28,8 +28,21 @@
   const pct = (p) => Math.round(p * 100) + '%';
   const sharesFmt = (n) => (n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(1));
 
+  // Device clocks can be off by seconds. All timestamps come from the server,
+  // so track the server-minus-device offset and draw on server time.
+  // Max of recent samples = the sample with the least network delay.
+  const offsets = [];
+  let clockOffset = 0;
+  function syncClock(serverNow) {
+    if (!Number.isFinite(serverNow)) return;
+    offsets.push(serverNow - Date.now());
+    if (offsets.length > 15) offsets.shift();
+    clockOffset = Math.max(...offsets);
+  }
+  const now = () => Date.now() + clockOffset;
+
   function timeAgo(t) {
-    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    const s = Math.max(0, Math.round((now() - t) / 1000));
     if (s < 10) return 'just now';
     if (s < 60) return s + 's ago';
     const m = Math.round(s / 60);
@@ -58,9 +71,11 @@
     const fontSize = opts.fontSize || 11;
     const padR = fontSize * 3.2, padT = 8, padB = 8, padL = 2;
     const cw = w - padL - padR, ch = h - padT - padB;
-    const now = opts.endTime || Date.now();
-    const t0 = history.length ? history[0].t : now - 60000;
-    const span = Math.max(60000, now - t0);
+    const lastT = history.length ? history[history.length - 1].t : 0;
+    const end = Math.max(opts.endTime || now(), lastT); // never draw a point past "now"
+    // Show at least a 1-minute window, padded on the left so "now" stays at the right edge.
+    const t0 = Math.min(history.length ? history[0].t : end, end - 60000);
+    const span = end - t0;
     const x = (t) => padL + ((t - t0) / span) * cw;
     const y = (p) => padT + (1 - p) * ch;
 
@@ -97,11 +112,11 @@
         ctx.lineTo(x(history[i].t), y(v));
         prev = v;
       }
-      ctx.lineTo(x(now), y(prev));
+      ctx.lineTo(x(end), y(prev));
       ctx.stroke();
       ctx.fillStyle = s.color;
       ctx.beginPath();
-      ctx.arc(x(now), y(prev), (opts.lineWidth || 2.25) + 1.5, 0, Math.PI * 2);
+      ctx.arc(x(end), y(prev), (opts.lineWidth || 2.25) + 1.5, 0, Math.PI * 2);
       ctx.fill();
       ends.push({ v: prev, color: s.color });
     });
@@ -126,7 +141,7 @@
     }
   }
 
-  window.Mkt = { cost, price, sharesForSpend, proceedsForSale, money, moneyShort, cents, pct, sharesFmt, timeAgo, drawChart, other };
+  window.Mkt = { syncClock, now, cost, price, sharesForSpend, proceedsForSale, money, moneyShort, cents, pct, sharesFmt, timeAgo, drawChart, other };
 
   window.Store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },

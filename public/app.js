@@ -16,11 +16,13 @@
   socket.io.on('reconnect_attempt', () => { $('conn').hidden = false; });
 
   socket.on('state', (st) => {
+    Mkt.syncClock(st.now);
     Object.assign(S, { q: st.q, b: st.b, startCash: st.startCash, open: st.open, price: st.price, history: st.history.slice(), feed: st.feed.slice() });
     setHeader(st.traders, st.volume);
     renderAll();
   });
   socket.on('tick', (t) => {
+    Mkt.syncClock(t.now);
     const prev = S.price;
     S.q = t.q; S.price = t.price; S.open = t.open;
     S.history.push(t.point);

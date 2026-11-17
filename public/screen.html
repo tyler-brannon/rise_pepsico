@@ -103,8 +103,9 @@
     });
   }
   const socket = io();
-  socket.on('state', (st) => { Object.assign(S, { history: st.history.slice(), feed: st.feed.slice(), price: st.price, open: st.open, startCash: st.startCash }); header(st); render(); });
+  socket.on('state', (st) => { Mkt.syncClock(st.now); Object.assign(S, { history: st.history.slice(), feed: st.feed.slice(), price: st.price, open: st.open, startCash: st.startCash }); header(st); render(); });
   socket.on('tick', (t) => {
+    Mkt.syncClock(t.now);
     S.price = t.price; S.open = t.open; S.history.push(t.point);
     if (t.feed && t.feed.length) S.feed = t.feed.slice().reverse().concat(S.feed).slice(0, 40);
     header(t); render();
