@@ -72,7 +72,7 @@
       <div class="url" id="url"></div>
     </div>
     <div class="s-panel">
-      <h2 id="panelTitle">Live trades</h2>
+      <h2 id="panelTitle">Leaderboard</h2>
       <ul class="list" id="panel"></ul>
     </div>
   </div>
@@ -124,40 +124,28 @@
     renderPanel();
     draw();
   }
-  // While open: live trades. Once closed: final standings.
+  // Leaderboard while open; titled "Final standings" once closed.
   function renderPanel() {
     const ul = $('panel');
     ul.innerHTML = '';
-    $('panelTitle').textContent = S.open ? 'Live trades' : 'Final standings';
-    const empty = (txt) => { const li = document.createElement('li'); li.className = 'empty'; li.textContent = txt; ul.appendChild(li); };
-    if (S.open) {
-      if (!S.feed.length) return empty('Waiting for the first trade…');
-      S.feed.slice(0, 12).forEach((f) => {
-        const li = document.createElement('li');
-        const tag = document.createElement('span'); tag.className = 'tag ' + f.side;
-        tag.textContent = (f.action === 'buy' ? 'Buy ' : 'Sell ') + (f.side === 'rise' ? 'Rise' : 'Pepsi');
-        const main = document.createElement('div'); main.className = 'feed-main';
-        const b = document.createElement('b'); b.textContent = f.name;
-        main.append(b, document.createTextNode(` ${f.action === 'buy' ? 'bought' : 'sold'} ${Mkt.money(f.dollars)}`));
-        const tm = document.createElement('div'); tm.className = 'feed-time'; tm.textContent = Mkt.timeAgo(f.t);
-        main.appendChild(tm);
-        li.append(tag, main); ul.appendChild(li);
-      });
-    } else {
-      if (!S.board.length) return empty('No traders.');
-      const medals = ['🥇', '🥈', '🥉'];
-      S.board.slice(0, 10).forEach((r, i) => {
-        const li = document.createElement('li');
-        const rank = document.createElement('span'); rank.className = 'rank' + (i < 3 ? ' medal' : ''); rank.textContent = i < 3 ? medals[i] : i + 1;
-        const who = document.createElement('span'); who.className = 'who'; who.textContent = r.name;
-        const val = document.createElement('span'); val.className = 'val'; val.textContent = Mkt.money(r.value);
-        const pnl = r.value - S.startCash;
-        const sm = document.createElement('small'); sm.className = pnl > 0.005 ? 'up' : pnl < -0.005 ? 'down' : '';
-        sm.textContent = (pnl >= 0 ? '+' : '−') + ((Math.abs(pnl) / S.startCash) * 100).toFixed(1) + '%';
-        val.appendChild(sm);
-        li.append(rank, who, val); ul.appendChild(li);
-      });
+    $('panelTitle').textContent = S.open ? 'Leaderboard' : 'Final standings';
+    if (!S.board.length) {
+      const li = document.createElement('li'); li.className = 'empty';
+      li.textContent = S.open ? 'Waiting for the first trader…' : 'No traders.';
+      return ul.appendChild(li);
     }
+    const medals = ['🥇', '🥈', '🥉'];
+    S.board.slice(0, 10).forEach((r, i) => {
+      const li = document.createElement('li');
+      const rank = document.createElement('span'); rank.className = 'rank' + (i < 3 ? ' medal' : ''); rank.textContent = i < 3 ? medals[i] : i + 1;
+      const who = document.createElement('span'); who.className = 'who'; who.textContent = r.name;
+      const val = document.createElement('span'); val.className = 'val'; val.textContent = Mkt.money(r.value);
+      const pnl = r.value - S.startCash;
+      const sm = document.createElement('small'); sm.className = pnl > 0.005 ? 'up' : pnl < -0.005 ? 'down' : '';
+      sm.textContent = (pnl >= 0 ? '+' : '−') + ((Math.abs(pnl) / S.startCash) * 100).toFixed(1) + '%';
+      val.appendChild(sm);
+      li.append(rank, who, val); ul.appendChild(li);
+    });
   }
   function draw() {
     const fs = Math.max(12, Math.round(window.innerWidth / 90));
@@ -165,7 +153,7 @@
     MarketPip.update(S);
   }
   window.addEventListener('resize', draw);
-  setInterval(() => { draw(); if (S.open) renderPanel(); }, 5000);
+  setInterval(draw, 5000);
 })();
 </script>
 </body>
